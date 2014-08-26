@@ -3,15 +3,14 @@ package org.jenkinsci.plugins.android_device;
 import com.github.nkzawa.emitter.Emitter;
 import com.github.nkzawa.socketio.client.IO;
 import com.github.nkzawa.socketio.client.Socket;
+import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
 import hudson.tasks.BuildWrapper;
+import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
 
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.io.*;
 import java.net.URISyntaxException;
 import java.util.Map;
 
@@ -62,22 +61,32 @@ public class AndroidRemote extends BuildWrapper {
 
         // wait for response
 
+        // find sdk path
+        AndroidSdk sdk = new AndroidSdk("/devel/android-sdk", "/devel/android-sdk");
         // connect device with adb
 
-        String ip = null;
-        int port = 0;
+        String ip = "10.203.202.178";
+        int port = 5555;
+        final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, ip, port);
 
-        final AndroidDeviceContext deviceContext = new AndroidDeviceContext(ip, port);
-
+        device.connect(15000);
         // check availability
 
-        // start logcat listener
+        // unlock screen
+        device.unlockScreen();
+
+        // Start dumping logcat to temporary file
+        final File artifactsDir = build.getArtifactsDir();
+        final FilePath logcatFile = build.getWorkspace().createTextTempFile("logcat_", ".log", "", false);
+        final OutputStream logcatStream = logcatFile.write();
+
+        device.startLogcatProc(logcatStream);
 
         return new BuildWrapper.Environment() {
             @Override
             public void buildEnvVars(Map<String, String> env) {
-                env.put("ANDROID_IP", deviceContext.ip());
-                env.put("ANDROID_PORT", Integer.toString(deviceContext.port()));
+                env.put("ANDROID_IP", device.ip());
+                env.put("ANDROID_PORT", Integer.toString(device.port()));
             }
         };
     }
