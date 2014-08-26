@@ -6,11 +6,6 @@ import hudson.model.*;
 import hudson.remoting.Callable;
 import hudson.remoting.Future;
 import hudson.util.ArgumentListBuilder;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.filefilter.IOFileFilter;
-import org.apache.commons.io.filefilter.NameFileFilter;
-import org.apache.commons.io.filefilter.TrueFileFilter;
-import org.jenkinsci.plugins.android_device.Constants;
 import org.jenkinsci.plugins.android_device.Messages;
 import org.jenkinsci.plugins.android_device.SdkInstallationException;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
@@ -56,205 +51,6 @@ public class Utils {
         }
 
         return envVars;
-    }
-
-    /**
-     * Tries to validate the given Android SDK root directory; otherwise tries to
-     * locate a copy of the SDK by checking for common environment variables.
-     *
-     * @param launcher    The launcher for the remote node.
-     * @param envVars     Environment variables for the build.
-     * @param androidHome The (variable-expanded) SDK root given in global config.
-     * @return Either a discovered SDK path or, if all else fails, the given androidHome value.
-     */
-    public static String discoverAndroidHome(Launcher launcher, Node node,
-                                             final EnvVars envVars, final String androidHome) {
-        final String autoInstallDir = getSdkInstallDirectory(node).getRemote();
-
-        Callable<String, InterruptedException> task = new Callable<String, InterruptedException>() {
-            public String call() throws InterruptedException {
-                // Verify existence of provided value
-                if (validateHomeDir(androidHome)) {
-                    return androidHome;
-                }
-
-                // Check for common environment variables
-                String[] keys = {"ANDROID_SDK_ROOT", "ANDROID_SDK_HOME",
-                        "ANDROID_HOME", "ANDROID_SDK"};
-
-                // Resolve each variable to its directory name
-                List<String> potentialSdkDirs = new ArrayList<String>();
-                for (String key : keys) {
-                    potentialSdkDirs.add(envVars.get(key));
-                }
-
-                // Also add the auto-installed SDK directory to the list of candidates
-                potentialSdkDirs.add(autoInstallDir);
-
-                // Check each directory to see if it's a valid Android SDK
-                for (String home : potentialSdkDirs) {
-                    if (validateHomeDir(home)) {
-                        return home;
-                    }
-                }
-
-                // Give up
-                return null;
-            }
-
-            private boolean validateHomeDir(String dir) {
-                if (Util.fixEmptyAndTrim(dir) == null) {
-                    return false;
-                }
-                return !Utils.validateAndroidHome(new File(dir), false).isFatal();
-            }
-
-            private static final long serialVersionUID = 1L;
-        };
-
-        String result = androidHome;
-        try {
-            result = launcher.getChannel().call(task);
-        } catch (InterruptedException e) {
-            // Ignore; will return default value
-        } catch (IOException e) {
-            // Ignore; will return default value
-        }
-        return result;
-    }
-
-    /**
-     * Determines the properties of the SDK installed on the build machine.
-     *
-     * @param launcher       The launcher for the remote node.
-     * @param androidSdkRoot The SDK root directory specified in the job/system configuration.
-     * @param androidSdkHome The SDK home directory, i.e. the workspace directory.
-     * @return AndroidSdk object representing the properties of the installed SDK.
-     */
-    public static AndroidSdk getAndroidSdk(Launcher launcher, final String androidSdkRoot, final String androidSdkHome) {
-        final boolean isUnix = launcher.isUnix();
-
-        Callable<AndroidSdk, IOException> task = new Callable<AndroidSdk, IOException>() {
-            public AndroidSdk call() throws IOException {
-                String sdkRoot = androidSdkRoot;
-                if (androidSdkRoot == null) {
-                    // If no SDK root was specified, attempt to detect it from PATH
-                    sdkRoot = getSdkRootFromPath(isUnix, System.getenv("PATH"));
-
-                    // If still nothing was found, then we cannot continue
-                    if (sdkRoot == null) {
-                        return null;
-                    }
-                } else {
-                    // Validate given SDK root
-                    ValidationResult result = Utils.validateAndroidHome(new File(sdkRoot), false);
-                    if (result.isFatal()) {
-                        return null;
-                    }
-                }
-
-                // Create SDK instance with what we know so far
-                return new AndroidSdk(sdkRoot, androidSdkHome);
-            }
-
-            private static final long serialVersionUID = 1L;
-        };
-
-        try {
-            return launcher.getChannel().call(task);
-        } catch (IOException e) {
-            // Ignore
-        } catch (InterruptedException e) {
-            // Ignore
-        }
-
-        return null;
-    }
-
-    /**
-     * Validates whether the given directory looks like a valid Android SDK directory.
-     *
-     * @param sdkRoot       The directory to validate.
-     * @param fromWebConfig Whether we are being called from the web config and should be more lax.
-     * @return Whether the SDK looks valid or not (or a warning if the SDK install is incomplete).
-     */
-    public static ValidationResult validateAndroidHome(File sdkRoot, boolean fromWebConfig) {
-        // This can be used to check the existence of a file on the server, so needs to be protected
-        if (fromWebConfig && !Hudson.getInstance().hasPermission(Hudson.ADMINISTER)) {
-            return ValidationResult.ok();
-        }
-
-        // Check the utter basics
-        if (fromWebConfig && (sdkRoot == null || sdkRoot.getPath().equals(""))) {
-            return ValidationResult.ok();
-        }
-        if (!sdkRoot.isDirectory()) {
-            if (fromWebConfig && sdkRoot.getPath().matches(".*(" + Constants.REGEX_VARIABLE + ").*")) {
-                return ValidationResult.ok();
-            }
-            return ValidationResult.error(Messages.INVALID_DIRECTORY());
-        }
-
-        // Ensure that this at least looks like an SDK directory
-        final String[] sdkDirectories = {"tools", "platforms"};
-        for (String dirName : sdkDirectories) {
-            File dir = new File(sdkRoot, dirName);
-            if (!dir.exists() || !dir.isDirectory()) {
-                return ValidationResult.error(Messages.INVALID_SDK_DIRECTORY());
-            }
-        }
-
-        // Search the various tool directories to ensure the basic tools exist
-        int toolsFound = 0;
-        final String[] toolDirectories = {"tools", "platform-tools", "build-tools"};
-        for (String dir : toolDirectories) {
-            File toolsDir = new File(sdkRoot, dir);
-            if (!toolsDir.isDirectory()) {
-                continue;
-            }
-            IOFileFilter filter = new NameFileFilter(Tool.getAllExecutableVariants(Tool.REQUIRED));
-            toolsFound += FileUtils.listFiles(toolsDir, filter, TrueFileFilter.INSTANCE).size();
-        }
-        if (toolsFound < Tool.REQUIRED.length) {
-            return ValidationResult.errorWithMarkup(Messages.REQUIRED_SDK_TOOLS_NOT_FOUND());
-        }
-
-        // Give the user a nice warning (not error) if they've not downloaded any platforms yet
-        File platformsDir = new File(sdkRoot, "platforms");
-        if (platformsDir.list().length == 0) {
-            return ValidationResult.warning(Messages.SDK_PLATFORMS_EMPTY());
-        }
-
-        return ValidationResult.ok();
-    }
-
-    /**
-     * Locates the current user's home directory using the same scheme as the Android SDK does.
-     *
-     * @return A {@link File} representing the directory in which the ".android" subdirectory should go.
-     */
-    public static File getHomeDirectory(String androidSdkHome) {
-        // From git://android.git.kernel.org/platform/external/qemu.git/android/utils/bufprint.c
-        String homeDirPath = System.getenv("ANDROID_SDK_HOME");
-        if (homeDirPath == null) {
-            if (androidSdkHome != null) {
-                homeDirPath = androidSdkHome;
-            } else if (!Functions.isWindows()) {
-                homeDirPath = System.getenv("HOME");
-                if (homeDirPath == null) {
-                    homeDirPath = "/tmp";
-                }
-            } else {
-                // The emulator checks Win32 "CSIDL_PROFILE", which should equal USERPROFILE
-                homeDirPath = System.getenv("USERPROFILE");
-                if (homeDirPath == null) {
-                    // Otherwise fall back to user.home (which should equal USERPROFILE anyway)
-                    homeDirPath = System.getProperty("user.home");
-                }
-            }
-        }
-
-        return new File(homeDirPath);
     }
 
     /**
@@ -328,7 +124,6 @@ public class Utils {
         if (androidSdk.hasKnownRoot()) {
             try {
                 androidToolsDir = androidSdk.getSdkRoot() + tool.findInSdk(androidSdk);
-                ;
             } catch (SdkInstallationException e) {
                 LOGGER.warning("A build-tools directory was found but there were no build-tools installed. Assuming command is on the PATH");
                 androidToolsDir = "";
@@ -676,6 +471,10 @@ public class Utils {
             }
         }
         return apiLevel;
+    }
+
+    public static boolean isUnix() {
+        return File.pathSeparatorChar == ':';
     }
 
     /**

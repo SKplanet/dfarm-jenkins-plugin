@@ -35,19 +35,19 @@ public class AndroidRemoteTest {
 
     //@Test
     public void testSocketIo() throws Exception {
-
-        Thread thread = new Thread(new Runnable() {
-            public void run() {
-                AndroidRemote remote = new AndroidRemote();
-                try {
-                    remote.connectApiServer();
-                } catch (URISyntaxException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-        thread.start();;
-
-        Thread.sleep(10000);
+//
+//        Thread thread = new Thread(new Runnable() {
+//            public void run() {
+//                AndroidRemote remote = new AndroidRemote();
+//                try {
+//                    remote.connectApiServer();
+//                } catch (URISyntaxException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        });
+//        thread.start();;
+//
+//        Thread.sleep(10000);
     }
 }

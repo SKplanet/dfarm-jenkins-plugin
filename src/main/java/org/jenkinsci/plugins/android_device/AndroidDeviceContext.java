@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
  */
 public class AndroidDeviceContext {
     private static final int DEFAULT_COMMAND_TIMEOUT_MS = 15000;
+    public static final int KEY_MENU = 82;
+    public static final int KEY_POWER = 26;
     private String ip;
     private int port;
 
@@ -62,14 +64,9 @@ public class AndroidDeviceContext {
      * @throws IOException
      * @throws InterruptedException
      */
-    public Launcher.ProcStarter getProcStarter() throws IOException, InterruptedException {
+    private Launcher.ProcStarter getProcStarter() throws IOException, InterruptedException {
         final EnvVars buildEnvironment = build.getEnvironment(TaskListener.NULL);
-        if (sdk.hasKnownHome()) {
-            buildEnvironment.put("ANDROID_SDK_HOME", sdk.getSdkHome());
-        }
-        if (isUnix()) {
-            buildEnvironment.put("LD_LIBRARY_PATH", String.format("%s/tools/lib", sdk.getSdkRoot()));
-        }
+        sdk.setupEnvVars(buildEnvironment);
         return launcher.launch().stdout(new NullStream()).stderr(logger()).envs(buildEnvironment);
     }
 
@@ -99,11 +96,7 @@ public class AndroidDeviceContext {
      * @return Arguments including the full path to the SDK and any extra Windows stuff required.
      */
     public ArgumentListBuilder getToolCommand(Tool tool, String args) {
-        return Utils.getToolCommand(sdk, isUnix(), tool, args);
-    }
-
-    private boolean isUnix() {
-        return File.pathSeparatorChar == ':';
+        return Utils.getToolCommand(sdk, File.pathSeparatorChar == ':', tool, args);
     }
 
     /**
@@ -117,7 +110,7 @@ public class AndroidDeviceContext {
      */
     public Launcher.ProcStarter getToolProcStarter(Tool tool, String args)
             throws IOException, InterruptedException {
-        return getProcStarter(Utils.getToolCommand(sdk, isUnix(), tool, args));
+        return getProcStarter(Utils.getToolCommand(sdk, Utils.isUnix(), tool, args));
     }
 
     public String serial() {
@@ -125,12 +118,15 @@ public class AndroidDeviceContext {
     }
 
     void unlockScreen() throws IOException, InterruptedException {
-        final String menuArgs = String.format("input keyevent %d", 82);
-        sendCommandWithSerial(menuArgs, DEFAULT_COMMAND_TIMEOUT_MS);
+        sendKey(KEY_MENU);
     }
 
     void powerOn() throws IOException, InterruptedException {
-        final String keyEventArgs = String.format("input keyevent %d", 26);
+        sendKey(KEY_POWER);
+    }
+
+    private void sendKey(int keyCode) throws IOException, InterruptedException {
+        final String keyEventArgs = String.format("input keyevent %d", keyCode);
         sendCommandWithSerial(keyEventArgs, DEFAULT_COMMAND_TIMEOUT_MS);
     }
 
