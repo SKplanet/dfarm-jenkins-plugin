@@ -11,10 +11,10 @@
     tags they use. Views are always organized according to its owner class,
     so it should be straightforward to find them.
   -->
-  <f:section title="Android remote device">
-    <f:entry title="Remote device server URL" field="url"
-      description="Input remote device server url">
-      <f:textbox />
-    </f:entry>
+  <f:section title="Android device farm">
+    <f:entry title="Android SDK home" field="androidHome"
+          description="Input android sdk home path">
+          <f:textbox />
+        </f:entry>
   </f:section>
 </j:jelly>

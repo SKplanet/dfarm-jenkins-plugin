@@ -1,7 +1,6 @@
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
   <!--
     This jelly script is used for per-project configuration.
-
     See global.jelly for a general discussion about jelly script.
   -->
 
@@ -9,8 +8,12 @@
     Creates a text field that shows the value of the "name" property.
     When submitted, it will be passed to the corresponding constructor parameter.
   -->
-  <f:entry title="Remote device server URL" field="url"
-      description="Leave blank if you specify android remote device url from global setting.">
+  <f:entry title="Remote device farm api URL" field="deviceApiUrl"
+      description="Leave blank if you specify android device farm url from global setting.">
+    <f:textbox />
+  </f:entry>
+  <f:entry title="Device tag" field="tag"
+      description="Leave blank if you want to reserve remote device randomly.">
     <f:textbox />
   </f:entry>
 </j:jelly>

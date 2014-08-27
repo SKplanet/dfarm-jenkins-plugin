@@ -3,21 +3,47 @@ package org.jenkinsci.plugins.android_device;
 import com.github.nkzawa.emitter.Emitter;
 import com.github.nkzawa.socketio.client.IO;
 import com.github.nkzawa.socketio.client.Socket;
-import hudson.FilePath;
-import hudson.Launcher;
+import com.google.common.base.Strings;
+import hudson.*;
 import hudson.model.AbstractBuild;
+import hudson.model.AbstractProject;
 import hudson.model.BuildListener;
+import hudson.model.Result;
 import hudson.tasks.BuildWrapper;
+import hudson.tasks.BuildWrapperDescriptor;
+import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
+import org.jenkinsci.plugins.android_device.util.Utils;
+import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.export.Exported;
 
 import java.io.*;
 import java.net.URISyntaxException;
 import java.util.Map;
 
+import static org.jenkinsci.plugins.android_device.DeviceFarmApi.*;
+
 /**
  * Created by skyisle on 08/25/2014.
  */
 public class AndroidRemote extends BuildWrapper {
+
+    public static final int API_TIMEOUT_IN_MILLIS = 7200;
+    public static final int DEVICE_WAIT_TIMEOUT_IN_MILLIS = 5 * 60 * 1000;
+    public static final int DEVICE_CONNECT_TIMEOUT_IN_MILLIS = 15000;
+    private static final int KILL_PROCESS_TIMEOUT_MS = 5000;
+
+    @Exported
+    public String deviceApiUrl;
+    @Exported
+    public String tag;
+
+    @DataBoundConstructor
+    public AndroidRemote(String deviceApiUrl, String tag) {
+        this.deviceApiUrl = deviceApiUrl;
+        this.tag = tag;
+    }
 
     /**
      * Helper method for writing to the build log in a consistent manner.
@@ -51,36 +77,46 @@ public class AndroidRemote extends BuildWrapper {
 
     @Override
     public BuildWrapper.Environment setUp(AbstractBuild build, Launcher launcher, BuildListener listener) throws IOException, InterruptedException {
-        // connect api server
+        final PrintStream logger = listener.getLogger();
 
+        final Socket apiServerSocket;
+        StringBuffer responce = new StringBuffer();
         try {
-            connectApiServer();
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
+            log(logger, Messages.TRYING_TO_CONNECT_API_SERVER(deviceApiUrl));
+            apiServerSocket = connectApiServer(logger, responce, deviceApiUrl, tag, build.getFullDisplayName());
+        } catch (FailedToConnectApiServerException e) {
+            log(logger, Messages.FAILD_TO_CONNECT_API_SERVER());
+            build.setResult(Result.NOT_BUILT);
+            return null;
         }
 
-        // wait for response
+        final RemoteDevice reserved = waitApiResponse(logger, responce, DEVICE_WAIT_TIMEOUT_IN_MILLIS);
+        if (reserved == null) {
+            log(logger, Messages.DEVICE_WAIT_TIMEOUT());
+            build.setResult(Result.NOT_BUILT);
+            cleanUp(null, apiServerSocket, null, null, null, null);
+            return null;
+        }
 
         // find sdk path
         AndroidSdk sdk = new AndroidSdk("/devel/android-sdk", "/devel/android-sdk");
         // connect device with adb
 
-        String ip = "10.203.202.178";
-        int port = 5555;
-        final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, ip, port);
+        final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, reserved.ip, reserved.port);
+        device.connect(DEVICE_CONNECT_TIMEOUT_IN_MILLIS);
 
-        device.connect(15000);
         // check availability
+        device.devices();
 
         // unlock screen
+        device.powerOn();
         device.unlockScreen();
 
         // Start dumping logcat to temporary file
         final File artifactsDir = build.getArtifactsDir();
         final FilePath logcatFile = build.getWorkspace().createTextTempFile("logcat_", ".log", "", false);
         final OutputStream logcatStream = logcatFile.write();
-
-        device.startLogcatProc(logcatStream);
+        final Proc logWriter = device.startLogcatProc(logcatStream);
 
         return new BuildWrapper.Environment() {
             @Override
@@ -88,26 +124,169 @@ public class AndroidRemote extends BuildWrapper {
                 env.put("ANDROID_IP", device.ip());
                 env.put("ANDROID_PORT", Integer.toString(device.port()));
             }
+
+            @Override
+            public boolean tearDown(AbstractBuild build, BuildListener listener)
+                    throws IOException, InterruptedException {
+                cleanUp(device, apiServerSocket, logWriter, logcatFile, logcatStream, artifactsDir);
+
+                return true;
+            }
         };
     }
 
-    public void connectApiServer() throws URISyntaxException {
-        final Socket socket = IO.socket("http://10.202.35.214:9001");
-        socket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
-            public void call(Object... args) {
-                socket.emit("foo", "hi");
-                socket.disconnect();
+    private void cleanUp(AndroidDeviceContext device, Socket apiSocket, Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
+        if (device != null) {
+            device.disconnect();
+        }
+
+        saveLogcat(logcatProcess, logcatFile, logcatStream, artifactsDir);
+        disconnectApiServer(apiSocket);
+    }
+
+    private void saveLogcat(Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
+        if (logcatProcess != null) {
+            if (logcatProcess.isAlive()) {
+                // This should have stopped when the emulator was,
+                // but if not attempt to kill the process manually.
+                // First, give it a final chance to finish cleanly.
+                Thread.sleep(3 * 1000);
+                if (logcatProcess.isAlive()) {
+                    Utils.killProcess(logcatProcess, KILL_PROCESS_TIMEOUT_MS);
+                }
+            }
+            try {
+                logcatStream.close();
+            } catch (Exception ignore) {
             }
 
-        }).on("event", new Emitter.Listener() {
-            public void call(Object... args) {
+            // Archive the logs
+            if (logcatFile.length() != 0) {
+                logcatFile.copyTo(new FilePath(artifactsDir).child("logcat.txt"));
             }
+            logcatFile.delete();
+        }
+    }
 
-        }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
-            public void call(Object... args) {
+    private RemoteDevice waitApiResponse(PrintStream logger, StringBuffer response, int timeout_in_ms) {
+        long start = System.currentTimeMillis();
+        while (response.length() == 0 &&
+                System.currentTimeMillis() < start + timeout_in_ms) {
+
+            log(logger, Messages.WAITING_FOR_DEVICE());
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                break;
             }
+        }
 
-        });
-        socket.connect();
+        if (response.length() == 0) {
+            return null;
+        }
+
+        //{port:6667, tag:'SHV-E330S,4.2.1'}
+        JSONObject jsonObject = JSONObject.fromObject(response.toString());
+        log(logger, Messages.DEVICE_READY_RESPONSE(jsonObject.optString(KEY_TAG)));
+        return new RemoteDevice(jsonObject.getString(KEY_IP), jsonObject.getInt(KEY_PORT));
+    }
+
+    private Socket connectApiServer(final PrintStream logger, final StringBuffer buffer, String deviceApiUrl, final String tag, final String jobId) throws FailedToConnectApiServerException {
+        try {
+            final Socket apiSocket = IO.socket(deviceApiUrl);
+            apiSocket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
+                public void call(Object... args) {
+                    JSONObject object = new JSONObject();
+                    object.put("tag", tag);
+                    object.put("id", jobId);
+                    apiSocket.emit(KEY_JEN_DEVICE, object.toString());
+                }
+
+            }).on(KEY_SVC_DEVICE, new Emitter.Listener() {
+                public void call(Object... args) {
+                    buffer.append(args[0]);
+                }
+            }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
+                public void call(Object... args) {
+                    log(logger, Messages.API_SERVER_DISCONNECTED());
+                }
+            });
+            return apiSocket.connect();
+
+        } catch (URISyntaxException e) {
+            throw new FailedToConnectApiServerException(e);
+        }
+    }
+
+    private void disconnectApiServer(Socket apiSocket) {
+        if (apiSocket != null) {
+            apiSocket.emit(KEY_JEN_OUT, "byebyebye");
+            apiSocket.disconnect();
+        }
+    }
+
+    @Extension
+    public static final class DescriptorImpl extends BuildWrapperDescriptor implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * The Android SDK home directory.  Can include variables, e.g. <tt>${ANDROID_HOME}</tt>.
+         * <p>If <code>null</code>, we will just assume the required commands are on the PATH.</p>
+         */
+        public String androidHome;
+        private String deviceApiUrl;
+
+        public DescriptorImpl() {
+            super(AndroidRemote.class);
+            load();
+        }
+
+        @Override
+        public String getDisplayName() {
+            return Messages.JOB_DESCRIPTION();
+        }
+
+        @Override
+        public boolean configure(StaplerRequest req, JSONObject json) throws FormException {
+            deviceApiUrl = json.optString("deviceApiUrl");
+            androidHome = json.optString("androidSdkHome");
+            save();
+            return true;
+        }
+
+        @Override
+        public BuildWrapper newInstance(StaplerRequest req, JSONObject formData) throws FormException {
+            String deviceApiUrl = null;
+            String tag = null;
+
+            deviceApiUrl = formData.optString("deviceApiUrl");
+            if (Strings.isNullOrEmpty(deviceApiUrl)) {
+                deviceApiUrl = this.deviceApiUrl;
+            }
+            tag = formData.optString("tag");
+
+            return new AndroidRemote(deviceApiUrl, tag);
+        }
+
+        @Override
+        public String getHelpFile() {
+            return Functions.getResourcePath() + "/plugin/android-device/help-buildConfig.html";
+        }
+
+        @Override
+        public boolean isApplicable(AbstractProject<?, ?> item) {
+            return true;
+        }
+//
+//        /** Used in config.jelly: Lists the OS versions available. */
+//        public AndroidPlatform[] getAndroidVersions() {
+//            return AndroidPlatform.ALL;
+//        }
+//
+//        /** Used in config.jelly: Lists the screen densities available. */
+//        public ScreenDensity[] getDeviceDensities() {
+//            return ScreenDensity.PRESETS;
+//        }
     }
 }

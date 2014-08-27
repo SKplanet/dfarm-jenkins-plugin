@@ -3,6 +3,7 @@ package org.jenkinsci.plugins.android_device;
 import com.google.common.net.InetAddresses;
 import hudson.EnvVars;
 import hudson.Launcher;
+import hudson.Proc;
 import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
 import hudson.model.TaskListener;
@@ -12,11 +13,10 @@ import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
 import org.jenkinsci.plugins.android_device.sdk.Tool;
 import org.jenkinsci.plugins.android_device.util.Utils;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
+import java.io.*;
 import java.util.concurrent.TimeUnit;
+
+import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
 
 /**
  * Created by skyisle on 08/25/2014.
@@ -71,7 +71,7 @@ public class AndroidDeviceContext {
     }
 
     private PrintStream logger() {
-        return null;
+        return listener.getLogger();
     }
 
     /**
@@ -142,19 +142,31 @@ public class AndroidDeviceContext {
         sendCommand(args, DEFAULT_COMMAND_TIMEOUT_MS);
     }
 
-    void startLogcatProc(OutputStream logcatStream) throws IOException, InterruptedException {
+    public void devices()
+            throws IOException, InterruptedException {
+        String args = "devices";
+        sendCommand(args, DEFAULT_COMMAND_TIMEOUT_MS);
+    }
+
+    Proc startLogcatProc(OutputStream logcatStream) throws IOException, InterruptedException {
         final String logcatArgs = String.format("-s %s logcat -v time", serial());
-        getToolProcStarter(Tool.ADB, logcatArgs).stdout(logcatStream).stderr(new NullStream()).start();
+        return getToolProcStarter(Tool.ADB, logcatArgs).stdout(logcatStream).stderr(new NullStream()).start();
     }
 
     public void sendCommand(String command, int timeout) throws IOException, InterruptedException {
         ArgumentListBuilder adbConnectCmd = getToolCommand(Tool.ADB, command);
-        getProcStarter(adbConnectCmd).start().joinWithTimeout(timeout, TimeUnit.MILLISECONDS, listener);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        getProcStarter(adbConnectCmd).stdout(outputStream).start().joinWithTimeout(timeout, TimeUnit.MILLISECONDS, listener);
+
+        log(logger(), outputStream.toString());
     }
 
     public void sendCommandWithSerial(String command, int timeout_in_ms) throws IOException, InterruptedException {
         final String commandArgs = String.format("-s %s shell %s", serial(), command);
         ArgumentListBuilder adbConnectCmd = getToolCommand(Tool.ADB, commandArgs);
-        getProcStarter(adbConnectCmd).start().joinWithTimeout(timeout_in_ms, TimeUnit.MILLISECONDS, listener);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        getProcStarter(adbConnectCmd).stdout(outputStream).start().joinWithTimeout(timeout_in_ms, TimeUnit.MILLISECONDS, listener);
+
+        log(logger(), outputStream.toString());
     }
 }

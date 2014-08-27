@@ -32,22 +32,4 @@ public class AndroidRemoteTest {
         assertThat(ctx.ip(), is(equalTo(ip)));
         assertThat(ctx.port(), is(equalTo(port)));
     }
-
-    //@Test
-    public void testSocketIo() throws Exception {
-//
-//        Thread thread = new Thread(new Runnable() {
-//            public void run() {
-//                AndroidRemote remote = new AndroidRemote();
-//                try {
-//                    remote.connectApiServer();
-//                } catch (URISyntaxException e) {
-//                    e.printStackTrace();
-//                }
-//            }
-//        });
-//        thread.start();;
-//
-//        Thread.sleep(10000);
-    }
 }
