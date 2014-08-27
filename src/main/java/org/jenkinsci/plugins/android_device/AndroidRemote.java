@@ -1,8 +1,5 @@
 package org.jenkinsci.plugins.android_device;
 
-import com.github.nkzawa.emitter.Emitter;
-import com.github.nkzawa.socketio.client.IO;
-import com.github.nkzawa.socketio.client.Socket;
 import com.google.common.base.Strings;
 import hudson.*;
 import hudson.model.AbstractBuild;
@@ -12,6 +9,7 @@ import hudson.model.Result;
 import hudson.tasks.BuildWrapper;
 import hudson.tasks.BuildWrapperDescriptor;
 import net.sf.json.JSONObject;
+import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
 import org.jenkinsci.plugins.android_device.util.Utils;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -19,10 +17,9 @@ import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.export.Exported;
 
 import java.io.*;
-import java.net.URISyntaxException;
 import java.util.Map;
 
-import static org.jenkinsci.plugins.android_device.DeviceFarmApi.*;
+import static org.jenkinsci.plugins.android_device.api.DeviceFarmApi.*;
 
 /**
  * Created by skyisle on 08/25/2014.
@@ -79,22 +76,22 @@ public class AndroidRemote extends BuildWrapper {
     public BuildWrapper.Environment setUp(AbstractBuild build, Launcher launcher, BuildListener listener) throws IOException, InterruptedException {
         final PrintStream logger = listener.getLogger();
 
-        final Socket apiServerSocket;
-        StringBuffer responce = new StringBuffer();
+        final DeviceFarmApi api = new DeviceFarmApi();
+        StringBuffer responseBuffer = new StringBuffer();
         try {
             log(logger, Messages.TRYING_TO_CONNECT_API_SERVER(deviceApiUrl));
-            apiServerSocket = connectApiServer(logger, responce, deviceApiUrl, tag, build.getFullDisplayName());
+            api.connectApiServer(logger, responseBuffer, deviceApiUrl, tag, build.getFullDisplayName());
         } catch (FailedToConnectApiServerException e) {
             log(logger, Messages.FAILD_TO_CONNECT_API_SERVER());
             build.setResult(Result.NOT_BUILT);
             return null;
         }
 
-        final RemoteDevice reserved = waitApiResponse(logger, responce, DEVICE_WAIT_TIMEOUT_IN_MILLIS);
+        final RemoteDevice reserved = waitApiResponse(logger, responseBuffer, DEVICE_WAIT_TIMEOUT_IN_MILLIS);
         if (reserved == null) {
             log(logger, Messages.DEVICE_WAIT_TIMEOUT());
             build.setResult(Result.NOT_BUILT);
-            cleanUp(null, apiServerSocket, null, null, null, null);
+            cleanUp(null, api, null, null, null, null);
             return null;
         }
 
@@ -128,20 +125,20 @@ public class AndroidRemote extends BuildWrapper {
             @Override
             public boolean tearDown(AbstractBuild build, BuildListener listener)
                     throws IOException, InterruptedException {
-                cleanUp(device, apiServerSocket, logWriter, logcatFile, logcatStream, artifactsDir);
+                cleanUp(device, api, logWriter, logcatFile, logcatStream, artifactsDir);
 
                 return true;
             }
         };
     }
 
-    private void cleanUp(AndroidDeviceContext device, Socket apiSocket, Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
+    private void cleanUp(AndroidDeviceContext device, DeviceFarmApi api, Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
         if (device != null) {
             device.disconnect();
         }
 
         saveLogcat(logcatProcess, logcatFile, logcatStream, artifactsDir);
-        disconnectApiServer(apiSocket);
+        api.disconnect();
     }
 
     private void saveLogcat(Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
@@ -189,40 +186,6 @@ public class AndroidRemote extends BuildWrapper {
         JSONObject jsonObject = JSONObject.fromObject(response.toString());
         log(logger, Messages.DEVICE_READY_RESPONSE(jsonObject.optString(KEY_TAG)));
         return new RemoteDevice(jsonObject.getString(KEY_IP), jsonObject.getInt(KEY_PORT));
-    }
-
-    private Socket connectApiServer(final PrintStream logger, final StringBuffer buffer, String deviceApiUrl, final String tag, final String jobId) throws FailedToConnectApiServerException {
-        try {
-            final Socket apiSocket = IO.socket(deviceApiUrl);
-            apiSocket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
-                public void call(Object... args) {
-                    JSONObject object = new JSONObject();
-                    object.put("tag", tag);
-                    object.put("id", jobId);
-                    apiSocket.emit(KEY_JEN_DEVICE, object.toString());
-                }
-
-            }).on(KEY_SVC_DEVICE, new Emitter.Listener() {
-                public void call(Object... args) {
-                    buffer.append(args[0]);
-                }
-            }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
-                public void call(Object... args) {
-                    log(logger, Messages.API_SERVER_DISCONNECTED());
-                }
-            });
-            return apiSocket.connect();
-
-        } catch (URISyntaxException e) {
-            throw new FailedToConnectApiServerException(e);
-        }
-    }
-
-    private void disconnectApiServer(Socket apiSocket) {
-        if (apiSocket != null) {
-            apiSocket.emit(KEY_JEN_OUT, "byebyebye");
-            apiSocket.disconnect();
-        }
     }
 
     @Extension

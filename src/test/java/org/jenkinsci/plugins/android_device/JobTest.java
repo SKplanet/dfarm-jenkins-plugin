@@ -11,6 +11,7 @@ import hudson.model.BuildListener;
 import hudson.model.FreeStyleBuild;
 import hudson.model.FreeStyleProject;
 import org.apache.commons.io.FileUtils;
+import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
