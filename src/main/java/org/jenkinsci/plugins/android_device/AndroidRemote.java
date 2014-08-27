@@ -2,10 +2,7 @@ package org.jenkinsci.plugins.android_device;
 
 import com.google.common.base.Strings;
 import hudson.*;
-import hudson.model.AbstractBuild;
-import hudson.model.AbstractProject;
-import hudson.model.BuildListener;
-import hudson.model.Result;
+import hudson.model.*;
 import hudson.tasks.BuildWrapper;
 import hudson.tasks.BuildWrapperDescriptor;
 import net.sf.json.JSONObject;
@@ -35,6 +32,7 @@ public class AndroidRemote extends BuildWrapper {
     public String deviceApiUrl;
     @Exported
     public String tag;
+    private DescriptorImpl descriptor;
 
     @DataBoundConstructor
     public AndroidRemote(String deviceApiUrl, String tag) {
@@ -95,8 +93,20 @@ public class AndroidRemote extends BuildWrapper {
             return null;
         }
 
-        // find sdk path
-        AndroidSdk sdk = new AndroidSdk("/devel/android-sdk", "/devel/android-sdk");
+        if (descriptor == null) {
+            descriptor = Hudson.getInstance().getDescriptorByType(DescriptorImpl.class);
+        }
+
+        // Substitute environment and build variables into config
+        final EnvVars envVars = Utils.getEnvironment(build, listener);
+        final Map<String, String> buildVars = build.getBuildVariables();
+
+        // SDK location
+        Node node = Computer.currentComputer().getNode();
+        String androidHome = Utils.expandVariables(envVars, buildVars, descriptor.androidHome);
+        androidHome = Utils.discoverAndroidHome(launcher, node, envVars, androidHome);
+
+        AndroidSdk sdk = new AndroidSdk(androidHome, androidHome);
         // connect device with adb
 
         final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, reserved.ip, reserved.port);

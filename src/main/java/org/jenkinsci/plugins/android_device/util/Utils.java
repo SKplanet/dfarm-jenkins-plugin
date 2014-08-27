@@ -92,6 +92,60 @@ public class Utils {
     }
 
     /**
+     * Tries to validate the given Android SDK root directory; otherwise tries to
+     * locate a copy of the SDK by checking for common environment variables.
+     *
+     * @param launcher The launcher for the remote node.
+     * @param envVars Environment variables for the build.
+     * @param androidHome The (variable-expanded) SDK root given in global config.
+     * @return Either a discovered SDK path or, if all else fails, the given androidHome value.
+     */
+    public static String discoverAndroidHome(Launcher launcher, Node node,
+                                             final EnvVars envVars, final String androidHome) {
+        final String autoInstallDir = getSdkInstallDirectory(node).getRemote();
+
+        Callable<String, InterruptedException> task = new Callable<String, InterruptedException>() {
+            public String call() throws InterruptedException {
+                // Verify existence of provided value
+
+                // Check for common environment variables
+                String[] keys = { "ANDROID_SDK_ROOT", "ANDROID_SDK_HOME",
+                        "ANDROID_HOME", "ANDROID_SDK" };
+
+                // Resolve each variable to its directory name
+                List<String> potentialSdkDirs = new ArrayList<String>();
+                for (String key : keys) {
+                    potentialSdkDirs.add(envVars.get(key));
+                }
+
+                // Also add the auto-installed SDK directory to the list of candidates
+                potentialSdkDirs.add(autoInstallDir);
+
+                // Check each directory to see if it's a valid Android SDK
+                for (String home : potentialSdkDirs) {
+                    return home;
+                }
+
+                // Give up
+                return null;
+            }
+
+
+
+            private static final long serialVersionUID = 1L;
+        };
+
+        String result = androidHome;
+        try {
+            result = launcher.getChannel().call(task);
+        } catch (InterruptedException e) {
+            // Ignore; will return default value
+        } catch (IOException e) {
+            // Ignore; will return default value
+        }
+        return result;
+    }
+    /**
      * Retrieves the path at which the Android SDK should be installed on the current node.
      *
      * @return Path within the tools folder where the SDK should live.
@@ -185,28 +239,6 @@ public class Utils {
     }
 
     /**
-     * Parses the contents of a properties file into a map.
-     *
-     * @param configFile The file to read.
-     * @return The key-value pairs contained in the file, ignoring any comments or blank lines.
-     * @throws IOException If the file could not be read.
-     */
-    public static Map<String, String> parseConfigFile(File configFile) throws IOException {
-        FileReader fileReader = new FileReader(configFile);
-        BufferedReader reader = new BufferedReader(fileReader);
-        Properties properties = new Properties();
-        properties.load(reader);
-        reader.close();
-
-        final Map<String, String> values = new HashMap<String, String>();
-        for (final Map.Entry<Object, Object> entry : properties.entrySet()) {
-            values.put((String) entry.getKey(), (String) entry.getValue());
-        }
-
-        return values;
-    }
-
-    /**
      * Expands the variable in the given string to its value in the environment variables available
      * to this build.  The Jenkins-specific build variables for this build are then substituted.
      *
@@ -284,54 +316,6 @@ public class Utils {
         } finally {
             if (task != null && !task.isDone()) {
                 task.cancel(true);
-            }
-        }
-
-        return Boolean.TRUE.equals(result);
-    }
-
-    /**
-     * Sends a user command to the running emulator via its telnet interface.<br>
-     * Execution will be cancelled if it takes longer than {@code timeoutMs}.
-     *
-     * @param launcher  The launcher for the remote node.
-     * @param logger    The build logger.
-     * @param port      The emulator's telnet port.
-     * @param command   The command to execute on the emulator's telnet interface.
-     * @param timeoutMs How long to wait (in ms) for the command to complete before cancelling it.
-     * @return Whether sending the command succeeded.
-     */
-    public static boolean sendEmulatorCommand(final Launcher launcher, final PrintStream logger,
-                                              final int port, final String command, int timeoutMs) {
-        Boolean result = null;
-        Future<Boolean> future = null;
-        try {
-            // Execute the task on the remote machine asynchronously, with a timeout
-            EmulatorCommandTask task = new EmulatorCommandTask(port, command);
-            future = launcher.getChannel().callAsync(task);
-            result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
-        } catch (IOException e) {
-            // Slave communication failed
-            log(logger, Messages.SENDING_COMMAND_FAILED(command, e));
-            e.printStackTrace(logger);
-        } catch (InterruptedException e) {
-            // Ignore; the caller should handle shutdown
-        } catch (ExecutionException e) {
-            // Exception thrown while trying to execute command
-            if (command.equals("kill") && e.getCause() instanceof SocketException) {
-                // This is expected: sending "kill" causes the emulator process to kill itself
-                result = true;
-            } else {
-                // Otherwise, it was some generic failure
-                log(logger, Messages.SENDING_COMMAND_FAILED(command, e));
-                e.printStackTrace(logger);
-            }
-        } catch (TimeoutException e) {
-            // Command execution timed-out
-            log(logger, Messages.SENDING_COMMAND_TIMED_OUT(command));
-        } finally {
-            if (future != null && !future.isDone()) {
-                future.cancel(true);
             }
         }
 
