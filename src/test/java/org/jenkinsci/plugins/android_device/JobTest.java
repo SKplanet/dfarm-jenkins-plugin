@@ -10,6 +10,7 @@ import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
 import hudson.model.FreeStyleBuild;
 import hudson.model.FreeStyleProject;
+import hudson.tasks.BuildWrapper;
 import org.apache.commons.io.FileUtils;
 import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
 import org.junit.After;
@@ -69,15 +70,15 @@ public class JobTest {
                                    BuildListener listener) throws InterruptedException, IOException {
 
                 AndroidRemote androidRemote = new AndroidRemote("http://localhost:" + PORT, "");
-                androidRemote.setUp(build, launcher, listener);
+                BuildWrapper.Environment environment = androidRemote.setUp(build, launcher, listener);
+                environment.tearDown(build, listener);
                 return true;
             }
         });
 
         FreeStyleBuild build = project.scheduleBuild2(0).get();
         String s = FileUtils.readFileToString(build.getLogFile());
-        assertThat(s, containsString("adb -s 10.20.30.40:8888 logcat -v time\n" +
-                "Finished: SUCCESS"));
+        assertThat(s, containsString("adb -s 10.20.30.40:8888 logcat -v time"));
     }
 
 }
