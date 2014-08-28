@@ -7,6 +7,7 @@ import hudson.tasks.BuildWrapper;
 import hudson.tasks.BuildWrapperDescriptor;
 import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
+import org.jenkinsci.plugins.android_device.api.MalformedResponseException;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
 import org.jenkinsci.plugins.android_device.sdk.SdkUtils;
 import org.jenkinsci.plugins.android_device.util.Utils;
@@ -16,18 +17,17 @@ import org.kohsuke.stapler.export.Exported;
 
 import java.io.*;
 import java.util.Map;
-
-import static org.jenkinsci.plugins.android_device.api.DeviceFarmApi.*;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Created by skyisle on 08/25/2014.
  */
 public class AndroidRemote extends BuildWrapper {
 
-    public static final int API_TIMEOUT_IN_MILLIS = 7200;
     public static final int DEVICE_WAIT_TIMEOUT_IN_MILLIS = 5 * 60 * 1000;
     public static final int DEVICE_CONNECT_TIMEOUT_IN_MILLIS = 15000;
     private static final int KILL_PROCESS_TIMEOUT_MS = 5000;
+    public static final int DEVICE_READY_CHECK_INTERVAL_IN_MS = 5000;
 
     @Exported
     public String deviceApiUrl;
@@ -76,76 +76,76 @@ public class AndroidRemote extends BuildWrapper {
         final PrintStream logger = listener.getLogger();
 
         final DeviceFarmApi api = new DeviceFarmApi();
-        StringBuffer responseBuffer = new StringBuffer();
+        long start = System.currentTimeMillis();
+
         try {
             log(logger, Messages.TRYING_TO_CONNECT_API_SERVER(deviceApiUrl));
-            api.connectApiServer(logger, responseBuffer, deviceApiUrl, tag, build.getFullDisplayName());
+            api.connectApiServer(logger, deviceApiUrl, tag, build.getFullDisplayName());
+
+            final RemoteDevice reserved;
+            reserved = api.waitApiResponse(logger, DEVICE_WAIT_TIMEOUT_IN_MILLIS, DEVICE_READY_CHECK_INTERVAL_IN_MS);
+            log(logger, Messages.DEVICE_IS_READY((System.currentTimeMillis() - start) / 1000));
+
+            if (descriptor == null) {
+                descriptor = Hudson.getInstance().getDescriptorByType(DescriptorImpl.class);
+            }
+
+            // Substitute environment and build variables into config
+            final EnvVars envVars = Utils.getEnvironment(build, listener);
+            final Map<String, String> buildVars = build.getBuildVariables();
+
+            // SDK location
+            Node node = Computer.currentComputer().getNode();
+            String androidHome = Utils.expandVariables(envVars, buildVars, descriptor.androidHome);
+            androidHome = SdkUtils.discoverAndroidHome(launcher, node, envVars, androidHome);
+            log(logger, Messages.USING_SDK(androidHome));
+
+            AndroidSdk sdk = new AndroidSdk(androidHome, androidHome);
+            // connect device with adb
+
+            final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, reserved.ip, reserved.port);
+            device.connect(DEVICE_CONNECT_TIMEOUT_IN_MILLIS);
+
+            // check availability
+            device.devices();
+
+            // unlock screen
+            device.powerOn();
+            device.unlockScreen();
+
+            // Start dumping logcat to temporary file
+            final File artifactsDir = build.getArtifactsDir();
+            final FilePath logcatFile = build.getWorkspace().createTextTempFile("logcat_", ".log", "", false);
+            final OutputStream logcatStream = logcatFile.write();
+            final Proc logWriter = device.startLogcatProc(logcatStream);
+
+            return new BuildWrapper.Environment() {
+                @Override
+                public void buildEnvVars(Map<String, String> env) {
+                    env.put("ANDROID_IP", device.ip());
+                    env.put("ANDROID_PORT", Integer.toString(device.port()));
+                }
+
+                @Override
+                public boolean tearDown(AbstractBuild build, BuildListener listener)
+                        throws IOException, InterruptedException {
+                    cleanUp(device, api, logWriter, logcatFile, logcatStream, artifactsDir);
+
+                    return true;
+                }
+            };
+
+        } catch (MalformedResponseException e) {
+            log(logger, Messages.FAILED_TO_PARSE_DEVICE_FARM_RESPONSE());
         } catch (FailedToConnectApiServerException e) {
-            log(logger, Messages.FAILD_TO_CONNECT_API_SERVER());
-            build.setResult(Result.NOT_BUILT);
-            return null;
-        }
-
-        long start = System.currentTimeMillis();
-        final RemoteDevice reserved = waitApiResponse(logger, responseBuffer, DEVICE_WAIT_TIMEOUT_IN_MILLIS);
-        if (reserved == null) {
+            log(logger, Messages.FAILED_TO_CONNECT_API_SERVER());
+        } catch (TimeoutException e) {
             log(logger, Messages.DEVICE_WAIT_TIMEOUT((System.currentTimeMillis() - start) / 1000));
-            build.setResult(Result.NOT_BUILT);
-            cleanUp(null, api, null, null, null, null);
-            return null;
         }
 
-        log(logger, Messages.DEVICE_IS_READY((System.currentTimeMillis() - start) / 1000));
-
-
-        if (descriptor == null) {
-            descriptor = Hudson.getInstance().getDescriptorByType(DescriptorImpl.class);
-        }
-
-        // Substitute environment and build variables into config
-        final EnvVars envVars = Utils.getEnvironment(build, listener);
-        final Map<String, String> buildVars = build.getBuildVariables();
-
-        // SDK location
-        Node node = Computer.currentComputer().getNode();
-        String androidHome = Utils.expandVariables(envVars, buildVars, descriptor.androidHome);
-        androidHome = SdkUtils.discoverAndroidHome(launcher, node, envVars, androidHome);
-        log(logger, Messages.USING_SDK(androidHome));
-
-        AndroidSdk sdk = new AndroidSdk(androidHome, androidHome);
-        // connect device with adb
-
-        final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, reserved.ip, reserved.port);
-        device.connect(DEVICE_CONNECT_TIMEOUT_IN_MILLIS);
-
-        // check availability
-        device.devices();
-
-        // unlock screen
-        device.powerOn();
-        device.unlockScreen();
-
-        // Start dumping logcat to temporary file
-        final File artifactsDir = build.getArtifactsDir();
-        final FilePath logcatFile = build.getWorkspace().createTextTempFile("logcat_", ".log", "", false);
-        final OutputStream logcatStream = logcatFile.write();
-        final Proc logWriter = device.startLogcatProc(logcatStream);
-
-        return new BuildWrapper.Environment() {
-            @Override
-            public void buildEnvVars(Map<String, String> env) {
-                env.put("ANDROID_IP", device.ip());
-                env.put("ANDROID_PORT", Integer.toString(device.port()));
-            }
-
-            @Override
-            public boolean tearDown(AbstractBuild build, BuildListener listener)
-                    throws IOException, InterruptedException {
-                cleanUp(device, api, logWriter, logcatFile, logcatStream, artifactsDir);
-
-                return true;
-            }
-        };
+        build.setResult(Result.NOT_BUILT);
+        cleanUp(null, api, null, null, null, null);
+        return null;
     }
 
     private void cleanUp(AndroidDeviceContext device, DeviceFarmApi api, Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
@@ -154,7 +154,10 @@ public class AndroidRemote extends BuildWrapper {
         }
 
         saveLogcat(logcatProcess, logcatFile, logcatStream, artifactsDir);
-        api.disconnect();
+
+        if (api != null) {
+            api.disconnect();
+        }
     }
 
     private void saveLogcat(Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
@@ -179,29 +182,6 @@ public class AndroidRemote extends BuildWrapper {
             }
             logcatFile.delete();
         }
-    }
-
-    private RemoteDevice waitApiResponse(PrintStream logger, StringBuffer response, int timeout_in_ms) {
-        long start = System.currentTimeMillis();
-        while (response.length() == 0 &&
-                System.currentTimeMillis() < start + timeout_in_ms) {
-
-            log(logger, Messages.WAITING_FOR_DEVICE());
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                break;
-            }
-        }
-
-        if (response.length() == 0) {
-            return null;
-        }
-
-        //{port:6667, tag:'SHV-E330S,4.2.1'}
-        JSONObject jsonObject = JSONObject.fromObject(response.toString());
-        log(logger, Messages.DEVICE_READY_RESPONSE(jsonObject.optString(KEY_TAG)));
-        return new RemoteDevice(jsonObject.getString(KEY_IP), jsonObject.getInt(KEY_PORT));
     }
 
     @Extension

@@ -3,12 +3,15 @@ package org.jenkinsci.plugins.android_device.api;
 import com.github.nkzawa.emitter.Emitter;
 import com.github.nkzawa.socketio.client.IO;
 import com.github.nkzawa.socketio.client.Socket;
+import net.sf.json.JSONException;
 import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.android_device.FailedToConnectApiServerException;
 import org.jenkinsci.plugins.android_device.Messages;
+import org.jenkinsci.plugins.android_device.RemoteDevice;
 
 import java.io.PrintStream;
 import java.net.URISyntaxException;
+import java.util.concurrent.TimeoutException;
 
 import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
 
@@ -25,9 +28,11 @@ public class DeviceFarmApi {
     public static final String KEY_ID = "id";
 
     private Socket apiSocket;
+    private StringBuffer buffer;
 
-    public void connectApiServer(final PrintStream logger, final StringBuffer buffer, String deviceApiUrl, final String tag, final String jobId) throws FailedToConnectApiServerException {
+    public void connectApiServer(final PrintStream logger, String deviceApiUrl, final String tag, final String jobId) throws FailedToConnectApiServerException {
         try {
+            buffer = new StringBuffer();
             apiSocket = IO.socket(deviceApiUrl);
             apiSocket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
                 public void call(Object... args) {
@@ -52,9 +57,41 @@ public class DeviceFarmApi {
         }
     }
 
+    public RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException {
+        long start = System.currentTimeMillis();
+        while (buffer.length() == 0 &&
+                System.currentTimeMillis() < start + timeout_in_ms) {
+
+            log(logger, Messages.WAITING_FOR_DEVICE());
+            try {
+                Thread.sleep(check_interval_in_ms);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
+
+        if (buffer.length() == 0) {
+            throw new TimeoutException();
+        }
+
+        //{port:6667, tag:'SHV-E330S,4.2.1'}
+
+        try {
+            JSONObject jsonObject = JSONObject.fromObject(buffer.toString());
+            log(logger, Messages.DEVICE_READY_RESPONSE(jsonObject.optString(KEY_TAG)));
+            String ip = jsonObject.getString(KEY_IP);
+            int port = jsonObject.getInt(KEY_PORT);
+            return new RemoteDevice(ip, port);
+        } catch (JSONException e) {
+            log(logger, Messages.FAILED_TO_PARSE_DEVICE_FARM_RESPONSE());
+            throw new MalformedResponseException(e);
+        }
+    }
+
     public void disconnect() {
         if (apiSocket != null) {
             apiSocket.emit(KEY_JEN_OUT, "bye");
+            apiSocket.emit(Socket.EVENT_DISCONNECT, "bye");
             apiSocket.disconnect();
         }
     }
