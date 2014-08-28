@@ -1,5 +1,6 @@
 package org.jenkinsci.plugins.android_device.sdk;
 
+import com.google.common.base.Strings;
 import hudson.EnvVars;
 import hudson.FilePath;
 import hudson.Launcher;
@@ -45,7 +46,13 @@ public class SdkUtils {
                 // Resolve each variable to its directory name
                 List<String> potentialSdkDirs = new ArrayList<String>();
                 for (String key : keys) {
-                    potentialSdkDirs.add(envVars.get(key));
+
+                    String value = envVars.get(key);
+                    LOGGER.info("envVar " + key + " has " + value);
+
+                    if (!Strings.isNullOrEmpty(value)) {
+                        potentialSdkDirs.add(value);
+                    }
                 }
 
                 // Also add the auto-installed SDK directory to the list of candidates
