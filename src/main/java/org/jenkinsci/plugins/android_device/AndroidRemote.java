@@ -8,6 +8,7 @@ import hudson.tasks.BuildWrapperDescriptor;
 import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
+import org.jenkinsci.plugins.android_device.sdk.SdkUtils;
 import org.jenkinsci.plugins.android_device.util.Utils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
@@ -85,13 +86,17 @@ public class AndroidRemote extends BuildWrapper {
             return null;
         }
 
+        long start = System.currentTimeMillis();
         final RemoteDevice reserved = waitApiResponse(logger, responseBuffer, DEVICE_WAIT_TIMEOUT_IN_MILLIS);
         if (reserved == null) {
-            log(logger, Messages.DEVICE_WAIT_TIMEOUT());
+            log(logger, Messages.DEVICE_WAIT_TIMEOUT((System.currentTimeMillis() - start) / 1000));
             build.setResult(Result.NOT_BUILT);
             cleanUp(null, api, null, null, null, null);
             return null;
         }
+
+        log(logger, Messages.DEVICE_IS_READY((System.currentTimeMillis() - start) / 1000));
+
 
         if (descriptor == null) {
             descriptor = Hudson.getInstance().getDescriptorByType(DescriptorImpl.class);
@@ -104,7 +109,8 @@ public class AndroidRemote extends BuildWrapper {
         // SDK location
         Node node = Computer.currentComputer().getNode();
         String androidHome = Utils.expandVariables(envVars, buildVars, descriptor.androidHome);
-        androidHome = Utils.discoverAndroidHome(launcher, node, envVars, androidHome);
+        androidHome = SdkUtils.discoverAndroidHome(launcher, node, envVars, androidHome);
+        log(logger, Messages.USING_SDK(androidHome));
 
         AndroidSdk sdk = new AndroidSdk(androidHome, androidHome);
         // connect device with adb

@@ -10,6 +10,7 @@ import hudson.model.TaskListener;
 import hudson.util.ArgumentListBuilder;
 import hudson.util.NullStream;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
+import org.jenkinsci.plugins.android_device.sdk.SdkUtils;
 import org.jenkinsci.plugins.android_device.sdk.Tool;
 import org.jenkinsci.plugins.android_device.util.Utils;
 
@@ -96,7 +97,7 @@ public class AndroidDeviceContext {
      * @return Arguments including the full path to the SDK and any extra Windows stuff required.
      */
     public ArgumentListBuilder getToolCommand(Tool tool, String args) {
-        return Utils.getToolCommand(sdk, File.pathSeparatorChar == ':', tool, args);
+        return SdkUtils.getToolCommand(sdk, File.pathSeparatorChar == ':', tool, args);
     }
 
     /**
@@ -110,7 +111,7 @@ public class AndroidDeviceContext {
      */
     public Launcher.ProcStarter getToolProcStarter(Tool tool, String args)
             throws IOException, InterruptedException {
-        return getProcStarter(Utils.getToolCommand(sdk, Utils.isUnix(), tool, args));
+        return getProcStarter(SdkUtils.getToolCommand(sdk, Utils.isUnix(), tool, args));
     }
 
     public String serial() {
