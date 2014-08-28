@@ -76,7 +76,7 @@ public class JobTest {
 
         FreeStyleBuild build = project.scheduleBuild2(0).get();
         String s = FileUtils.readFileToString(build.getLogFile());
-        assertThat(s, containsString("$ /devel/android-sdk/platform-tools/adb -s 10.20.30.40:8888 logcat -v time\n" +
+        assertThat(s, containsString("adb -s 10.20.30.40:8888 logcat -v time\n" +
                 "Finished: SUCCESS"));
     }
 
