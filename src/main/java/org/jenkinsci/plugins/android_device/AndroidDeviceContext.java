@@ -16,6 +16,7 @@ import org.jenkinsci.plugins.android_device.util.Utils;
 
 import java.io.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
 
@@ -154,6 +155,11 @@ public class AndroidDeviceContext {
         return getToolProcStarter(Tool.ADB, logcatArgs).stdout(logcatStream).stderr(new NullStream()).start();
     }
 
+    void screenshot(OutputStream logcatStream) throws IOException, InterruptedException {
+        final String logcatArgs = String.format("-s %s shell screencap -p", serial());
+        getToolProcStarter(Tool.ADB, logcatArgs).stdout(logcatStream).stderr(new NullStream()).start().join();
+    }
+
     public void sendCommand(String command, int timeout) throws IOException, InterruptedException {
         ArgumentListBuilder adbConnectCmd = getToolCommand(Tool.ADB, command);
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -169,5 +175,40 @@ public class AndroidDeviceContext {
         getProcStarter(adbConnectCmd).stdout(outputStream).start().joinWithTimeout(timeout_in_ms, TimeUnit.MILLISECONDS, listener);
 
         log(logger(), outputStream.toString());
+    }
+
+    public void waitDeviceReady(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws TimeoutException {
+        long start = System.currentTimeMillis();
+        boolean foundDeviceReady = false;
+        while (System.currentTimeMillis() < start + timeout_in_ms) {
+
+            log(logger, Messages.WAITING_FOR_DEVICE());
+
+            ArgumentListBuilder adbConnectCmd = getToolCommand(Tool.ADB, "devices");
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            try {
+                getProcStarter(adbConnectCmd).stdout(outputStream).start().joinWithTimeout(DEFAULT_COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS, listener);
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            if (outputStream.toString().contains(serial() + "\t" + "device")) {
+                foundDeviceReady = true;
+                break;
+            }
+
+            try {
+                Thread.sleep(check_interval_in_ms);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
+
+        if (!foundDeviceReady) {
+            throw new TimeoutException();
+        }
+
     }
 }

@@ -10,6 +10,7 @@ import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
 import org.jenkinsci.plugins.android_device.api.MalformedResponseException;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
 import org.jenkinsci.plugins.android_device.sdk.SdkUtils;
+import org.jenkinsci.plugins.android_device.util.ReplaceFilterOutputStream;
 import org.jenkinsci.plugins.android_device.util.Utils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
@@ -28,6 +29,7 @@ public class AndroidRemote extends BuildWrapper {
     public static final int DEVICE_CONNECT_TIMEOUT_IN_MILLIS = 15000;
     private static final int KILL_PROCESS_TIMEOUT_MS = 5000;
     public static final int DEVICE_READY_CHECK_INTERVAL_IN_MS = 5000;
+    public static final String ARTIFACT_LOGCAT_TXT = "logcat.txt";
 
     @Exported
     public String deviceApiUrl;
@@ -106,6 +108,7 @@ public class AndroidRemote extends BuildWrapper {
             final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, reserved.ip, reserved.port);
             device.connect(DEVICE_CONNECT_TIMEOUT_IN_MILLIS);
 
+            device.waitDeviceReady(logger, DEVICE_CONNECT_TIMEOUT_IN_MILLIS, 1000);
             // check availability
             device.devices();
 
@@ -114,10 +117,8 @@ public class AndroidRemote extends BuildWrapper {
             device.unlockScreen();
 
             // Start dumping logcat to temporary file
-            final File artifactsDir = build.getArtifactsDir();
-            final FilePath logcatFile = build.getWorkspace().createTextTempFile("logcat_", ".log", "", false);
-            final OutputStream logcatStream = logcatFile.write();
-            final Proc logWriter = device.startLogcatProc(logcatStream);
+            final LogcatCollector logcatCollector = new LogcatCollector(build, device);
+            logcatCollector.start();
 
             return new BuildWrapper.Environment() {
                 @Override
@@ -129,58 +130,45 @@ public class AndroidRemote extends BuildWrapper {
                 @Override
                 public boolean tearDown(AbstractBuild build, BuildListener listener)
                         throws IOException, InterruptedException {
-                    cleanUp(device, api, logWriter, logcatFile, logcatStream, artifactsDir);
+                    cleanUp(build, device, api, logcatCollector);
 
                     return true;
                 }
             };
 
-        } catch (MalformedResponseException e) {
-            log(logger, Messages.FAILED_TO_PARSE_DEVICE_FARM_RESPONSE());
         } catch (FailedToConnectApiServerException e) {
             log(logger, Messages.FAILED_TO_CONNECT_API_SERVER());
+        } catch (MalformedResponseException e) {
+            log(logger, Messages.FAILED_TO_PARSE_DEVICE_FARM_RESPONSE());
         } catch (TimeoutException e) {
             log(logger, Messages.DEVICE_WAIT_TIMEOUT((System.currentTimeMillis() - start) / 1000));
         }
 
         build.setResult(Result.NOT_BUILT);
-        cleanUp(null, api, null, null, null, null);
+        cleanUp(null, null, api, null);
         return null;
     }
 
-    private void cleanUp(AndroidDeviceContext device, DeviceFarmApi api, Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
+    private static void screenCaptureToFile(AbstractBuild build, AndroidDeviceContext device) throws IOException, InterruptedException {
+        FilePath screencapFile = build.getWorkspace().createTempFile("screencap", ".png");
+        OutputStream screencapStream = screencapFile.write();
+        FilterOutputStream replaceFilterStream = new ReplaceFilterOutputStream(screencapStream);
+        device.screenshot(replaceFilterStream);
+        screencapFile.copyTo(new FilePath(build.getArtifactsDir()).child("screencap.png"));
+    }
+
+    private void cleanUp(AbstractBuild build, AndroidDeviceContext device, DeviceFarmApi api, LogcatCollector logcatProcess) throws IOException, InterruptedException {
+        if (logcatProcess != null) {
+            logcatProcess.saveToFile(KILL_PROCESS_TIMEOUT_MS, ARTIFACT_LOGCAT_TXT);
+        }
+
         if (device != null) {
+            screenCaptureToFile(build, device);
             device.disconnect();
         }
 
-        saveLogcat(logcatProcess, logcatFile, logcatStream, artifactsDir);
-
         if (api != null) {
             api.disconnect();
-        }
-    }
-
-    private void saveLogcat(Proc logcatProcess, FilePath logcatFile, OutputStream logcatStream, File artifactsDir) throws IOException, InterruptedException {
-        if (logcatProcess != null) {
-            if (logcatProcess.isAlive()) {
-                // This should have stopped when the emulator was,
-                // but if not attempt to kill the process manually.
-                // First, give it a final chance to finish cleanly.
-                Thread.sleep(3 * 1000);
-                if (logcatProcess.isAlive()) {
-                    Utils.killProcess(logcatProcess, KILL_PROCESS_TIMEOUT_MS);
-                }
-            }
-            try {
-                logcatStream.close();
-            } catch (Exception ignore) {
-            }
-
-            // Archive the logs
-            if (logcatFile.length() != 0) {
-                logcatFile.copyTo(new FilePath(artifactsDir).child("logcat.txt"));
-            }
-            logcatFile.delete();
         }
     }
 
@@ -248,4 +236,5 @@ public class AndroidRemote extends BuildWrapper {
 //            return ScreenDensity.PRESETS;
 //        }
     }
+
 }

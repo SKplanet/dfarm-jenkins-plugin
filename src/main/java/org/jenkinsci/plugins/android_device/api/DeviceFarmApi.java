@@ -10,7 +10,9 @@ import org.jenkinsci.plugins.android_device.Messages;
 import org.jenkinsci.plugins.android_device.RemoteDevice;
 
 import java.io.PrintStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.util.concurrent.TimeoutException;
 
 import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
@@ -38,7 +40,11 @@ public class DeviceFarmApi {
                 public void call(Object... args) {
                     JSONObject object = new JSONObject();
                     object.put(KEY_TAG, tag);
-                    object.put(KEY_ID, jobId);
+                    try {
+                        object.put(KEY_ID, URLEncoder.encode(jobId, "utf-8"));
+                    } catch (UnsupportedEncodingException e) {
+                        e.printStackTrace();
+                    }
                     apiSocket.emit(KEY_JEN_DEVICE, object.toString());
                 }
 
@@ -49,6 +55,7 @@ public class DeviceFarmApi {
             }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
                 public void call(Object... args) {
                     log(logger, Messages.API_SERVER_DISCONNECTED());
+                    apiSocket.disconnect();
                 }
             });
             apiSocket.connect();
