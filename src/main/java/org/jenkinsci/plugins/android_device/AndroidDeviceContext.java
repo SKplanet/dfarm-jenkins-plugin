@@ -119,11 +119,11 @@ public class AndroidDeviceContext {
         return String.format("%s:%d", ip, port);
     }
 
-    void unlockScreen() throws IOException, InterruptedException {
+    public void unlockScreen() throws IOException, InterruptedException {
         sendKey(KEY_MENU);
     }
 
-    void powerOn() throws IOException, InterruptedException {
+    public void powerOn() throws IOException, InterruptedException {
         sendKey(KEY_POWER);
     }
 

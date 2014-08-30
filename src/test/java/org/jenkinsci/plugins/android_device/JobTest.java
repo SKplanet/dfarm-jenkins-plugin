@@ -12,7 +12,7 @@ import hudson.model.FreeStyleBuild;
 import hudson.model.FreeStyleProject;
 import hudson.tasks.BuildWrapper;
 import org.apache.commons.io.FileUtils;
-import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
+import org.jenkinsci.plugins.android_device.api.DeviceFarmApiImpl;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -43,13 +43,13 @@ public class JobTest {
 
         server = new SocketIOServer(config);
 
-        server.addEventListener(DeviceFarmApi.KEY_JEN_DEVICE, String.class, new DataListener<String>() {
+        server.addEventListener(DeviceFarmApiImpl.KEY_JEN_DEVICE, String.class, new DataListener<String>() {
             public void onData(SocketIOClient socketIOClient, String jenDevice, AckRequest ackRequest) throws Exception {
-                socketIOClient.sendEvent(DeviceFarmApi.KEY_SVC_DEVICE, "{\"ip\":\"10.20.30.40\",\"port\":\"8888\",\"tag\":\"TEST-365\"}");
+                socketIOClient.sendEvent(DeviceFarmApiImpl.KEY_SVC_DEVICE, "{\"ip\":\"10.20.30.40\",\"port\":\"8888\",\"tag\":\"TEST-365\"}");
             }
         });
 
-        server.addEventListener(DeviceFarmApi.KEY_JEN_OUT, Object.class, new DataListener<Object>() {
+        server.addEventListener(DeviceFarmApiImpl.KEY_JEN_OUT, Object.class, new DataListener<Object>() {
             public void onData(SocketIOClient socketIOClient, Object jenDevice, AckRequest ackRequest) throws Exception {
 
             }
@@ -69,9 +69,13 @@ public class JobTest {
             public boolean perform(AbstractBuild<?, ?> build, Launcher launcher,
                                    BuildListener listener) throws InterruptedException, IOException {
 
-                AndroidRemote androidRemote = new AndroidRemote("http://localhost:" + PORT, "");
+                AndroidRemote androidRemote = new AndroidRemote("http://localhost:" + PORT, "") {
+
+                };
                 BuildWrapper.Environment environment = androidRemote.setUp(build, launcher, listener);
-                environment.tearDown(build, listener);
+                if (environment != null) {
+                    environment.tearDown(build, listener);
+                }
                 return true;
             }
         });

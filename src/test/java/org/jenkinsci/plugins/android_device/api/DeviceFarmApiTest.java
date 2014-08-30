@@ -71,7 +71,7 @@ public class DeviceFarmApiTest {
     }
 
     private DeviceFarmApi connect(String url) throws FailedToConnectApiServerException {
-        DeviceFarmApi api = new DeviceFarmApi();
+        DeviceFarmApi api = new DeviceFarmApiImpl();
         api.connectApiServer(logger(), url, "", "Job#1");
         return api;
     }

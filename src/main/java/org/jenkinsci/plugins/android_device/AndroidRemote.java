@@ -7,6 +7,7 @@ import hudson.tasks.BuildWrapper;
 import hudson.tasks.BuildWrapperDescriptor;
 import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
+import org.jenkinsci.plugins.android_device.api.DeviceFarmApiImpl;
 import org.jenkinsci.plugins.android_device.api.MalformedResponseException;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
 import org.jenkinsci.plugins.android_device.sdk.SdkUtils;
@@ -77,15 +78,15 @@ public class AndroidRemote extends BuildWrapper {
     public BuildWrapper.Environment setUp(AbstractBuild build, Launcher launcher, BuildListener listener) throws IOException, InterruptedException {
         final PrintStream logger = listener.getLogger();
 
-        final DeviceFarmApi api = new DeviceFarmApi();
+        final DeviceFarmApi api = new DeviceFarmApiImpl();
         long start = System.currentTimeMillis();
 
         try {
             log(logger, Messages.TRYING_TO_CONNECT_API_SERVER(deviceApiUrl));
             api.connectApiServer(logger, deviceApiUrl, tag, build.getFullDisplayName());
 
-            final RemoteDevice reserved;
-            reserved = api.waitApiResponse(logger, DEVICE_WAIT_TIMEOUT_IN_MILLIS, DEVICE_READY_CHECK_INTERVAL_IN_MS);
+            final RemoteDevice reserved = api.waitApiResponse(logger,
+                    DEVICE_WAIT_TIMEOUT_IN_MILLIS, DEVICE_READY_CHECK_INTERVAL_IN_MS);
             log(logger, Messages.DEVICE_IS_READY((System.currentTimeMillis() - start) / 1000));
 
             if (descriptor == null) {
@@ -93,19 +94,12 @@ public class AndroidRemote extends BuildWrapper {
             }
 
             // Substitute environment and build variables into config
-            final EnvVars envVars = Utils.getEnvironment(build, listener);
-            final Map<String, String> buildVars = build.getBuildVariables();
-
-            // SDK location
-            Node node = Computer.currentComputer().getNode();
-            String androidHome = Utils.expandVariables(envVars, buildVars, descriptor.androidHome);
-            androidHome = SdkUtils.discoverAndroidHome(launcher, node, envVars, androidHome);
+            String androidHome = discoverAndroidSdkHome(build, launcher, listener);
             log(logger, Messages.USING_SDK(androidHome));
 
             AndroidSdk sdk = new AndroidSdk(androidHome, androidHome);
-            // connect device with adb
-
             final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, reserved.ip, reserved.port);
+            // connect device with adb
             device.connect(DEVICE_CONNECT_TIMEOUT_IN_MILLIS);
 
             device.waitDeviceReady(logger, DEVICE_CONNECT_TIMEOUT_IN_MILLIS, 1000);
@@ -147,6 +141,17 @@ public class AndroidRemote extends BuildWrapper {
         build.setResult(Result.NOT_BUILT);
         cleanUp(null, null, api, null);
         return null;
+    }
+
+    private String discoverAndroidSdkHome(AbstractBuild build, Launcher launcher, BuildListener listener) {
+        final EnvVars envVars = Utils.getEnvironment(build, listener);
+        final Map<String, String> buildVars = build.getBuildVariables();
+
+        // SDK location
+        Node node = Computer.currentComputer().getNode();
+        String androidHome = Utils.expandVariables(envVars, buildVars, descriptor.androidHome);
+        androidHome = SdkUtils.discoverAndroidHome(launcher, node, envVars, androidHome);
+        return androidHome;
     }
 
     private static void screenCaptureToFile(AbstractBuild build, AndroidDeviceContext device) throws IOException, InterruptedException {
