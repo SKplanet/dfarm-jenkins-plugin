@@ -87,7 +87,7 @@ public class AndroidRemote extends BuildWrapper {
 
             final RemoteDevice reserved = api.waitApiResponse(logger,
                     DEVICE_WAIT_TIMEOUT_IN_MILLIS, DEVICE_READY_CHECK_INTERVAL_IN_MS);
-            log(logger, Messages.DEVICE_IS_READY((System.currentTimeMillis() - start) / 1000));
+            log(logger, Messages.DEVICE_IS_READY(passedSeconds(start), reserved.ip, reserved.port));
 
             if (descriptor == null) {
                 descriptor = Hudson.getInstance().getDescriptorByType(DescriptorImpl.class);
@@ -135,12 +135,16 @@ public class AndroidRemote extends BuildWrapper {
         } catch (MalformedResponseException e) {
             log(logger, Messages.FAILED_TO_PARSE_DEVICE_FARM_RESPONSE());
         } catch (TimeoutException e) {
-            log(logger, Messages.DEVICE_WAIT_TIMEOUT((System.currentTimeMillis() - start) / 1000));
+            log(logger, Messages.DEVICE_WAIT_TIMEOUT(passedSeconds(start)));
         }
 
         build.setResult(Result.NOT_BUILT);
         cleanUp(null, null, api, null);
         return null;
+    }
+
+    private long passedSeconds(long start) {
+        return (System.currentTimeMillis() - start) / 1000;
     }
 
     private String discoverAndroidSdkHome(AbstractBuild build, Launcher launcher, BuildListener listener) {
