@@ -1,15 +1,13 @@
 package org.jenkinsci.plugins.android_device.api;
 
-import com.corundumstudio.socketio.AckRequest;
-import com.corundumstudio.socketio.Configuration;
-import com.corundumstudio.socketio.SocketIOClient;
-import com.corundumstudio.socketio.SocketIOServer;
+import com.corundumstudio.socketio.*;
 import com.corundumstudio.socketio.listener.DataListener;
 import com.corundumstudio.socketio.listener.DisconnectListener;
 import org.jenkinsci.plugins.android_device.FailedToConnectApiServerException;
 import org.jenkinsci.plugins.android_device.RemoteDevice;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -25,7 +23,9 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 public class DeviceFarmApiTest {
-    private static int PORT = 9099;
+    public static final int DEFAULT_CONNECT_TIMEOUT = 1000;
+    private static int PORT = 10067;
+    public static final int INVALID_PORT = 9876;
     private static final String HOST = "localhost";
     public static final String DEVICE_HOST = "10.20.30.40";
     public static final int DEVICE_PORT = 8888;
@@ -41,6 +41,7 @@ public class DeviceFarmApiTest {
         Configuration config = new Configuration();
         config.setHostname("localhost");
         config.setPort(PORT);
+        config.setAckMode(AckMode.MANUAL);
 
         countDownLatch = new CountDownLatch(1);
 
@@ -70,9 +71,9 @@ public class DeviceFarmApiTest {
         PORT += 10;
     }
 
-    private DeviceFarmApi connect(String url) throws FailedToConnectApiServerException {
+    private DeviceFarmApi connect(String url, int connectTimeout) throws FailedToConnectApiServerException {
         DeviceFarmApi api = new DeviceFarmApiImpl();
-        api.connectApiServer(logger(), url, "", "Job#1");
+        api.connectApiServer(logger(), url, "", "Job#1", connectTimeout);
         return api;
     }
 
@@ -84,7 +85,7 @@ public class DeviceFarmApiTest {
     @Test
     public void testInvalidApiServerHostPort() throws Exception {
         try {
-            connect("aaa$$)#:1234");
+            connect("aaa$$)#:1234", DEFAULT_CONNECT_TIMEOUT);
             fail();
         } catch (FailedToConnectApiServerException e) {
         }
@@ -107,7 +108,7 @@ public class DeviceFarmApiTest {
             }
         });
 
-        DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, PORT));
+        DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, PORT), DEFAULT_CONNECT_TIMEOUT);
         RemoteDevice remoteDevice = api.waitApiResponse(logger(), 7000, 5000);
 
         assertThat(remoteDevice.ip, is(equalTo(DEVICE_HOST)));
@@ -118,7 +119,7 @@ public class DeviceFarmApiTest {
 
     @Test
     public void testResponseTimeoutException() throws Exception, FailedToConnectApiServerException, MalformedResponseException {
-        DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, PORT));
+        DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, PORT), DEFAULT_CONNECT_TIMEOUT);
 
         try {
             api.waitApiResponse(logger(), 2000, 1000);
@@ -130,6 +131,19 @@ public class DeviceFarmApiTest {
         waitDisconnect();
     }
 
+    @Ignore
+    public void testConnectionFailedTimeoutException() throws FailedToConnectApiServerException, MalformedResponseException, TimeoutException {
+        DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, INVALID_PORT), 1000);
+
+        try {
+            api.waitApiResponse(logger(), 10000, 500);
+            fail();
+        } catch (FailedToConnectApiServerException e) {
+        }
+
+        api.disconnect();
+    }
+
 
     @Test
     public void testMalformedResponseException() throws Exception, FailedToConnectApiServerException {
@@ -138,7 +152,7 @@ public class DeviceFarmApiTest {
                 socketIOClient.sendEvent(DeviceFarmApi.KEY_SVC_DEVICE, "{\"ip\":\"" + DEVICE_HOST + "\",\"poXXXXrt\":\"" + DEVICE_PORT + "\",\"tag\":\"TEST-365\"}");
             }
         });
-        DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, PORT));
+        DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, PORT), DEFAULT_CONNECT_TIMEOUT);
 
         try {
             api.waitApiResponse(logger(), 7000, 5000);

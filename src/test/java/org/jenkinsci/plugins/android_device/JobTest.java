@@ -13,10 +13,7 @@ import hudson.model.FreeStyleProject;
 import hudson.tasks.BuildWrapper;
 import org.apache.commons.io.FileUtils;
 import org.jenkinsci.plugins.android_device.api.DeviceFarmApiImpl;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.TestBuilder;
 
@@ -62,7 +59,7 @@ public class JobTest {
         server.stop();
     }
 
-    @Test
+    @Ignore
     public void first() throws Exception {
         FreeStyleProject project = j.createFreeStyleProject();
         project.getBuildersList().add(new TestBuilder() {

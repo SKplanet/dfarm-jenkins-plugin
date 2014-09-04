@@ -23,15 +23,21 @@ import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
 public class DeviceFarmApiImpl implements DeviceFarmApi {
 
     public static final String CONNECTION_TIMEOUT = "connection_timeout";
+    public static final int DEFAULT_CONNECT_TIMEOUT = 10000;
     private Socket apiSocket;
     private StringBuffer buffer;
 
     public void connectApiServer(final PrintStream logger, String deviceApiUrl, final String tag, final String jobId) throws FailedToConnectApiServerException {
+        connectApiServer(logger, deviceApiUrl, tag, jobId, DEFAULT_CONNECT_TIMEOUT);
+    }
+
+    public void connectApiServer(final PrintStream logger, String deviceApiUrl, final String tag, final String jobId, long connect_timeout) throws FailedToConnectApiServerException {
         try {
             buffer = new StringBuffer();
             IO.Options options = new IO.Options();
             options.forceNew = true;
-            options.timeout = 10000;
+            options.reconnection = false;
+            options.timeout = connect_timeout;
 
             apiSocket = IO.socket(deviceApiUrl, options);
             apiSocket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {

@@ -19,6 +19,7 @@ public interface DeviceFarmApi {
     String KEY_ID = "id";
 
     void connectApiServer(PrintStream logger, String deviceApiUrl, String tag, String jobId) throws FailedToConnectApiServerException;
+    void connectApiServer(PrintStream logger, String deviceApiUrl, String tag, String jobId, long connect_timeout) throws FailedToConnectApiServerException;
 
     RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException, FailedToConnectApiServerException;
 
