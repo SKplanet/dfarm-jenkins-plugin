@@ -20,7 +20,7 @@ public interface DeviceFarmApi {
 
     void connectApiServer(PrintStream logger, String deviceApiUrl, String tag, String jobId) throws FailedToConnectApiServerException;
 
-    RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException;
+    RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException, FailedToConnectApiServerException;
 
     void disconnect();
 }

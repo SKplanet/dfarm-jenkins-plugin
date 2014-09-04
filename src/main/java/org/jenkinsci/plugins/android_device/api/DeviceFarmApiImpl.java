@@ -22,6 +22,7 @@ import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
  */
 public class DeviceFarmApiImpl implements DeviceFarmApi {
 
+    public static final String CONNECTION_TIMEOUT = "connection_timeout";
     private Socket apiSocket;
     private StringBuffer buffer;
 
@@ -30,10 +31,12 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
             buffer = new StringBuffer();
             IO.Options options = new IO.Options();
             options.forceNew = true;
+            options.timeout = 10000;
 
             apiSocket = IO.socket(deviceApiUrl, options);
             apiSocket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
                 public void call(Object... args) {
+                    log(logger, Messages.API_SERVER_CONNECTED());
                     String s = buildJenDeviceValue(tag, jobId);
                     apiSocket.emit(KEY_JEN_DEVICE, s);
                 }
@@ -46,6 +49,10 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
                 public void call(Object... args) {
                     log(logger, Messages.API_SERVER_DISCONNECTED());
                     apiSocket.disconnect();
+                }
+            }).on(Socket.EVENT_CONNECT_TIMEOUT, new Emitter.Listener() {
+                public void call(Object... objects) {
+                    buffer.append(CONNECTION_TIMEOUT);
                 }
             });
             apiSocket.connect();
@@ -65,7 +72,7 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
         return object.toString();
     }
 
-    public RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException {
+    public RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException, FailedToConnectApiServerException {
         long start = System.currentTimeMillis();
         while (buffer.length() == 0 &&
                 System.currentTimeMillis() < start + timeout_in_ms) {
@@ -80,6 +87,10 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
 
         if (buffer.length() == 0) {
             throw new TimeoutException();
+        }
+
+        if (CONNECTION_TIMEOUT.endsWith(buffer.toString())) {
+            throw new FailedToConnectApiServerException("Connection timeout");
         }
 
         //{port:6667, tag:'SHV-E330S,4.2.1'}
