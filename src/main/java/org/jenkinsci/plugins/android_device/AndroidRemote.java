@@ -94,7 +94,7 @@ public class AndroidRemote extends BuildWrapper {
             }
 
             // Substitute environment and build variables into config
-            String androidHome = discoverAndroidSdkHome(build, launcher, listener);
+            final String androidHome = discoverAndroidSdkHome(build, launcher, listener);
             log(logger, Messages.USING_SDK(androidHome));
 
             AndroidSdk sdk = new AndroidSdk(androidHome, androidHome);
@@ -107,7 +107,6 @@ public class AndroidRemote extends BuildWrapper {
             device.devices();
 
             // unlock screen
-            device.powerOn();
             device.unlockScreen();
 
             // Start dumping logcat to temporary file
@@ -118,6 +117,8 @@ public class AndroidRemote extends BuildWrapper {
                 @Override
                 public void buildEnvVars(Map<String, String> env) {
                     env.put("ANDROID_IP", device.ip());
+                    env.put("ANDROID_HOME", androidHome);
+                    env.put("ANDROID_SDK_HOME", androidHome);
                     env.put("ANDROID_PORT", Integer.toString(device.port()));
                 }
 

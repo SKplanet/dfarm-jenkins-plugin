@@ -25,7 +25,6 @@ import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
  */
 public class AndroidDeviceContext {
     private static final int DEFAULT_COMMAND_TIMEOUT_MS = 15000;
-    public static final int KEY_MENU = 82;
     public static final int KEY_POWER = 26;
     private String ip;
     private int port;
@@ -120,7 +119,7 @@ public class AndroidDeviceContext {
     }
 
     public void unlockScreen() throws IOException, InterruptedException {
-        sendKey(KEY_MENU);
+      sendCommandWithSerial("am start -n com.skplanet.unlock/.Unlock", 5000);
     }
 
     public void powerOn() throws IOException, InterruptedException {
