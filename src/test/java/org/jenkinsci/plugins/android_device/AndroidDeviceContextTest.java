@@ -48,7 +48,7 @@ public class AndroidDeviceContextTest {
         assertThat(called[0], is(equalTo("input keyevent 26")));
 
         deviceMock.unlockScreen();
-        assertThat(called[0], is(equalTo("input keyevent 82")));
+        assertThat(called[0], is(equalTo("am start -n com.skplanet.unlock/.Unlock")));
 
         deviceMock.disconnect();
         assertThat(called[0], is(equalTo(String.format("disconnect %s:%d", ip, port))));

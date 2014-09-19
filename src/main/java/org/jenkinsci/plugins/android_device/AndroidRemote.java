@@ -120,6 +120,7 @@ public class AndroidRemote extends BuildWrapper {
                     env.put("ANDROID_HOME", androidHome);
                     env.put("ANDROID_SDK_HOME", androidHome);
                     env.put("ANDROID_PORT", Integer.toString(device.port()));
+                    env.put("ANDROID_SERIAL", device.serial());
                 }
 
                 @Override
