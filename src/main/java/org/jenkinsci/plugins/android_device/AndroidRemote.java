@@ -82,8 +82,11 @@ public class AndroidRemote extends BuildWrapper {
         long start = System.currentTimeMillis();
 
         try {
+            EnvVars environment = build.getEnvironment(listener);
+            String expendedTag = environment.expand(tag);
+
             log(logger, Messages.TRYING_TO_CONNECT_API_SERVER(deviceApiUrl));
-            api.connectApiServer(logger, deviceApiUrl, tag, build.getFullDisplayName());
+            api.connectApiServer(logger, deviceApiUrl, expendedTag, build.getFullDisplayName());
 
             final RemoteDevice reserved = api.waitApiResponse(logger,
                     DEVICE_WAIT_TIMEOUT_IN_MILLIS, DEVICE_READY_CHECK_INTERVAL_IN_MS);
