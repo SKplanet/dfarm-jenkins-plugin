@@ -6,10 +6,11 @@ package org.jenkinsci.plugins.android_device;
 public class RemoteDevice {
     public String ip;
     public int port;
+    public String url;
 
-    public RemoteDevice(String ip, int port) {
-
+    public RemoteDevice(String ip, int port, String url) {
         this.ip = ip;
         this.port = port;
+        this.url = url;
     }
 }

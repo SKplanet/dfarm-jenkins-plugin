@@ -90,7 +90,7 @@ public class AndroidRemote extends BuildWrapper {
 
             final RemoteDevice reserved = api.waitApiResponse(logger,
                     DEVICE_WAIT_TIMEOUT_IN_MILLIS, DEVICE_READY_CHECK_INTERVAL_IN_MS);
-            log(logger, Messages.DEVICE_IS_READY(passedSeconds(start), reserved.ip, reserved.port));
+            log(logger, Messages.DEVICE_IS_READY(passedSeconds(start), reserved.ip, reserved.port, reserved.url));
 
             if (descriptor == null) {
                 descriptor = Hudson.getInstance().getDescriptorByType(DescriptorImpl.class);

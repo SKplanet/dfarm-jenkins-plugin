@@ -99,14 +99,13 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
             throw new FailedToConnectApiServerException("Connection timeout");
         }
 
-        //{port:6667, tag:'SHV-E330S,4.2.1'}
-
         try {
             JSONObject jsonObject = JSONObject.fromObject(buffer.toString());
             log(logger, Messages.DEVICE_READY_RESPONSE(jsonObject.optString(KEY_TAG)));
             String ip = jsonObject.getString(KEY_IP);
             int port = jsonObject.getInt(KEY_PORT);
-            return new RemoteDevice(ip, port);
+            String url = jsonObject.optString(KEY_URL);
+            return new RemoteDevice(ip, port, url);
         } catch (JSONException e) {
             log(logger, Messages.FAILED_TO_PARSE_DEVICE_FARM_RESPONSE());
             throw new MalformedResponseException(e);

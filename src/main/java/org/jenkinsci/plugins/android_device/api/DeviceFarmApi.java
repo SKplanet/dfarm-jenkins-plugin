@@ -11,6 +11,7 @@ import java.util.concurrent.TimeoutException;
  */
 public interface DeviceFarmApi {
     String KEY_PORT = "port";
+    String KEY_URL = "url";
     String KEY_TAG = "tag";
     String KEY_JEN_DEVICE = "jen_device";
     String KEY_JEN_OUT = "jen_out";
