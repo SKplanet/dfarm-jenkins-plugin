@@ -25,6 +25,7 @@ import static org.jenkinsci.plugins.android_device.AndroidRemote.log;
  */
 public class AndroidDeviceContext {
     private static final int DEFAULT_COMMAND_TIMEOUT_MS = 15000;
+    private static final int DEFAULT_SCREENSHOT_COMMAND_TIMEOUT_MS = 30000;
     public static final int KEY_POWER = 26;
     private String ip;
     private int port;
@@ -155,8 +156,12 @@ public class AndroidDeviceContext {
     }
 
     void screenshot(OutputStream logcatStream) throws IOException, InterruptedException {
+        screenshot(logcatStream, DEFAULT_SCREENSHOT_COMMAND_TIMEOUT_MS);
+    }
+
+    void screenshot(OutputStream logcatStream, int timeout) throws IOException, InterruptedException {
         final String logcatArgs = String.format("-s %s shell screencap -p", serial());
-        getToolProcStarter(Tool.ADB, logcatArgs).stdout(logcatStream).stderr(new NullStream()).start().join();
+        getToolProcStarter(Tool.ADB, logcatArgs).stdout(logcatStream).stderr(new NullStream()).start().joinWithTimeout(timeout, TimeUnit.MILLISECONDS, listener);
     }
 
     public void sendCommand(String command, int timeout) throws IOException, InterruptedException {
