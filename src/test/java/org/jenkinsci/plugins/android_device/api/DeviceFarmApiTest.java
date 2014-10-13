@@ -101,7 +101,7 @@ public class DeviceFarmApiTest {
     }
 
     @Test
-    public void testResponseOk() throws Exception, FailedToConnectApiServerException, MalformedResponseException {
+    public void testResponseOk() throws Exception, FailedToConnectApiServerException, MalformedResponseException, NoDeviceAvailableException {
         server.addEventListener(DeviceFarmApi.KEY_JEN_DEVICE, String.class, new DataListener<String>() {
             public void onData(SocketIOClient socketIOClient, String jenDevice, AckRequest ackRequest) throws Exception {
                 socketIOClient.sendEvent(DeviceFarmApi.KEY_SVC_DEVICE, "{\"ip\":\"" + DEVICE_HOST + "\",\"port\":\"" + DEVICE_PORT + "\",\"tag\":\"TEST-365\"}");
@@ -118,7 +118,7 @@ public class DeviceFarmApiTest {
     }
 
     @Test
-    public void testResponseTimeoutException() throws Exception, FailedToConnectApiServerException, MalformedResponseException {
+    public void testResponseTimeoutException() throws Exception, FailedToConnectApiServerException, MalformedResponseException, NoDeviceAvailableException {
         DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, PORT), DEFAULT_CONNECT_TIMEOUT);
 
         try {
@@ -132,7 +132,7 @@ public class DeviceFarmApiTest {
     }
 
     @Ignore
-    public void testConnectionFailedTimeoutException() throws FailedToConnectApiServerException, MalformedResponseException, TimeoutException {
+    public void testConnectionFailedTimeoutException() throws FailedToConnectApiServerException, MalformedResponseException, TimeoutException, NoDeviceAvailableException {
         DeviceFarmApi api = connect(String.format("http://%s:%d", HOST, INVALID_PORT), 1000);
 
         try {
@@ -146,7 +146,7 @@ public class DeviceFarmApiTest {
 
 
     @Test
-    public void testMalformedResponseException() throws Exception, FailedToConnectApiServerException {
+    public void testMalformedResponseException() throws Exception, FailedToConnectApiServerException, NoDeviceAvailableException {
         server.addEventListener(DeviceFarmApi.KEY_JEN_DEVICE, String.class, new DataListener<String>() {
             public void onData(SocketIOClient socketIOClient, String jenDevice, AckRequest ackRequest) throws Exception {
                 socketIOClient.sendEvent(DeviceFarmApi.KEY_SVC_DEVICE, "{\"ip\":\"" + DEVICE_HOST + "\",\"poXXXXrt\":\"" + DEVICE_PORT + "\",\"tag\":\"TEST-365\"}");

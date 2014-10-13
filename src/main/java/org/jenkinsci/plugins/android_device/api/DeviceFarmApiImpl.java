@@ -24,6 +24,7 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
 
     public static final String CONNECTION_TIMEOUT = "connection_timeout";
     public static final int DEFAULT_CONNECT_TIMEOUT = 10000;
+    public static final String NO_DEVICE = "NO_DEVICE";
     private Socket apiSocket;
     private StringBuffer buffer;
 
@@ -50,6 +51,11 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
             }).on(KEY_SVC_DEVICE, new Emitter.Listener() {
                 public void call(Object... args) {
                     buffer.append(args[0]);
+                }
+            }).on(KEY_SVC_NODEVICE, new Emitter.Listener() {
+                public void call(Object... args) {
+                    buffer.append(NO_DEVICE);
+                    apiSocket.disconnect();
                 }
             }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
                 public void call(Object... args) {
@@ -78,7 +84,7 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
         return object.toString();
     }
 
-    public RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException, FailedToConnectApiServerException {
+    public RemoteDevice waitApiResponse(PrintStream logger, int timeout_in_ms, int check_interval_in_ms) throws MalformedResponseException, TimeoutException, FailedToConnectApiServerException, NoDeviceAvailableException {
         long start = System.currentTimeMillis();
         while (buffer.length() == 0 &&
                 System.currentTimeMillis() < start + timeout_in_ms) {
@@ -97,6 +103,10 @@ public class DeviceFarmApiImpl implements DeviceFarmApi {
 
         if (CONNECTION_TIMEOUT.endsWith(buffer.toString())) {
             throw new FailedToConnectApiServerException("Connection timeout");
+        }
+
+        if (NO_DEVICE.endsWith(buffer.toString())) {
+            throw new NoDeviceAvailableException("no such device");
         }
 
         try {

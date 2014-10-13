@@ -9,6 +9,7 @@ import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.android_device.api.DeviceFarmApi;
 import org.jenkinsci.plugins.android_device.api.DeviceFarmApiImpl;
 import org.jenkinsci.plugins.android_device.api.MalformedResponseException;
+import org.jenkinsci.plugins.android_device.api.NoDeviceAvailableException;
 import org.jenkinsci.plugins.android_device.sdk.AndroidSdk;
 import org.jenkinsci.plugins.android_device.sdk.SdkUtils;
 import org.jenkinsci.plugins.android_device.util.ReplaceFilterOutputStream;
@@ -141,6 +142,8 @@ public class AndroidRemote extends BuildWrapper {
             log(logger, Messages.FAILED_TO_PARSE_DEVICE_FARM_RESPONSE());
         } catch (TimeoutException e) {
             log(logger, Messages.DEVICE_WAIT_TIMEOUT(passedSeconds(start)));
+        } catch (NoDeviceAvailableException e) {
+            log(logger, Messages.NO_SUCH_DEVICE());
         }
 
         build.setResult(Result.NOT_BUILT);
