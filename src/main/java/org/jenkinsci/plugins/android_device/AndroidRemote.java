@@ -103,6 +103,9 @@ public class AndroidRemote extends BuildWrapper {
 
             AndroidSdk sdk = new AndroidSdk(androidHome, androidHome);
             final AndroidDeviceContext device = new AndroidDeviceContext(build, launcher, listener, sdk, reserved.ip, reserved.port);
+            // disconnect first to workaround previous error
+            device.disconnect();
+
             // connect device with adb
             device.connect(DEVICE_CONNECT_TIMEOUT_IN_MILLIS);
 
