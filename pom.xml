@@ -21,6 +21,20 @@
     </license>
   </licenses>
 
+  <!-- 프로젝트의 artifact를 배포할 저장소 -->
+  <distributionManagement>
+    <repository>
+      <id>skp-releases</id>
+      <name>skp-releases</name>
+      <url>http://mvn.skplanet.com/content/repositories/releases/</url>
+    </repository>
+    <snapshotRepository>
+      <id>skp-snapshots</id>
+      <name>skp-snapshots</name>
+      <url>http://mvn.skplanet.com/content/repositories/snapshots</url>
+    </snapshotRepository>
+  </distributionManagement>
+  
   <!-- get every artifact through repo.jenkins-ci.org, which proxies all the artifacts that we need -->
   <repositories>
     <repository>
