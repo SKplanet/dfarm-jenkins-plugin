@@ -11,7 +11,7 @@
   <packaging>hpi</packaging>
 
   <scm>
-    <developerConnection>scm:git:http://skyisle@yobi.skplanet.com/SQE/android-device-plugin</developerConnection>
+      <developerConnection>scm:git:ssh://skvalley.com:29418/devicefarm-android-plugin</developerConnection>
   </scm>
 
   <licenses>
